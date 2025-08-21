@@ -12,7 +12,10 @@ load_dotenv()
 
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN")
 TG_CHANNEL_ID = os.getenv("TG_CHANNEL_ID")
-SCRAPER_API_KEYS = os.getenv("SCRAPER_API_KEYS").split(",")
+SCRAPER_API_KEYS = os.getenv("SCRAPER_API_KEYS", "")
+if not SCRAPER_API_KEYS:
+    raise ValueError("❌ Environment variable 'SCRAPER_API_KEYS' not found. Check Railway configuration.")
+SCRAPER_API_KEYS = SCRAPER_API_KEYS.split(",")
 
 KEYWORDS = [
     "crema viso", "siero viso", "contorno occhi", "maschera viso", "crema antirughe",
