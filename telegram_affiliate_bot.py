@@ -12,9 +12,9 @@ load_dotenv()
 
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN")
 TG_CHANNEL_ID = os.getenv("TG_CHANNEL_ID")
-SCRAPER_API_KEYS = os.getenv("SCRAPER_API_KEYS", "")
+SCRAPER_API_KEYS = os.getenv("SCRAPER_API_KEYS") or os.getenv("SCRAPER_API_KEY")
 if not SCRAPER_API_KEYS:
-    raise ValueError("❌ Environment variable 'SCRAPER_API_KEYS' not found. Check Railway configuration.")
+    raise ValueError("❌ Nessuna chiave SCRAPER_API_KEY(S) trovata. Verifica su Railway.")
 SCRAPER_API_KEYS = SCRAPER_API_KEYS.split(",")
 
 KEYWORDS = [
