@@ -12,10 +12,9 @@ load_dotenv()
 
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN")
 TG_CHANNEL_ID = os.getenv("TG_CHANNEL_ID")
-SCRAPER_API_KEYS = os.getenv("SCRAPER_API_KEYS") or os.getenv("SCRAPER_API_KEY")
-if not SCRAPER_API_KEYS:
-    raise ValueError("❌ Nessuna chiave SCRAPER_API_KEY(S) trovata. Verifica su Railway.")
-SCRAPER_API_KEYS = SCRAPER_API_KEYS.split(",")
+SCRAPER_API_KEY = os.getenv("SCRAPER_API_KEY")
+if not SCRAPER_API_KEY:
+    raise ValueError("❌ Nessuna chiave SCRAPER_API_KEY trovata. Verifica su Railway.")
 
 KEYWORDS = [
     "crema viso", "siero viso", "contorno occhi", "maschera viso", "crema antirughe",
@@ -41,17 +40,16 @@ def save_posted_links():
 bot = Bot(token=TG_BOT_TOKEN)
 
 def get_soup(url):
-    for api_key in SCRAPER_API_KEYS:
-        try:
-            response = requests.get(
-                "http://api.scraperapi.com/",
-                params={"api_key": api_key, "url": url, "country_code": "it"},
-                timeout=15,
-            )
-            if response.status_code == 200:
-                return BeautifulSoup(response.content, "html.parser")
-        except Exception:
-            continue
+    try:
+        response = requests.get(
+            "http://api.scraperapi.com/",
+            params={"api_key": SCRAPER_API_KEY, "url": url, "country_code": "it"},
+            timeout=15,
+        )
+        if response.status_code == 200:
+            return BeautifulSoup(response.content, "html.parser")
+    except Exception:
+        pass
     return None
 
 def extract_products(soup):
