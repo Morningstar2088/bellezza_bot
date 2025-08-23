@@ -3,7 +3,6 @@ import requests
 from bs4 import BeautifulSoup
 from telegram import Bot
 from telegram.constants import ParseMode
-from telegram.ext import ApplicationBuilder
 import asyncio
 import re
 import time
@@ -25,8 +24,10 @@ async def send_to_telegram(bot, product):
         message = f"🛍️ <b>{product['title']}</b>\n\n"
         message += f"💸 <b>Prezzo:</b> <s>{product['old_price']}</s> → <b>{product['price']}</b>\n"
         message += f"🔥 <b>Sconto:</b> {product['discount']}\n"
-        message += f"🚚 <b>Venduto da:</b> {product['sold_by']}\n"
-        message += f"📦 <b>Spedito da:</b> {product['shipped_by']}\n"
+        if product['sold_by'] != "Non disponibile":
+            message += f"🏪 <b>Venduto da:</b> {product['sold_by']}\n"
+        if product['shipped_by'] != "Non disponibile":
+            message += f"🚚 <b>Spedito da:</b> {product['shipped_by']}\n"
         message += f"🔗 <a href='{product['link']}'>Acquista ora su Amazon</a>\n\n"
         message += "#bellezza #offerte #amazon"
 
@@ -55,7 +56,6 @@ def extract_products_from_html(html):
         price_tag = product.select_one('.a-price span.a-offscreen')
         old_price_tag = product.select_one('.a-price.a-text-price span.a-offscreen')
         image_tag = product.select_one('img')
-        link_tag = product.select_one('a.a-link-normal')
 
         if not title_tag or not price_tag or not old_price_tag:
             continue
@@ -63,26 +63,41 @@ def extract_products_from_html(html):
         price = price_tag.text.strip()
         old_price = old_price_tag.text.strip()
 
-        # Calcolo sconto
         try:
             p1 = float(re.sub(r"[^\d,]", "", old_price).replace(",", "."))
             p2 = float(re.sub(r"[^\d,]", "", price).replace(",", "."))
             sconto = round(100 - (p2 / p1 * 100))
-            if sconto < 20:  # filtro: sconto almeno 20%
+            if sconto < 25:
                 continue
         except:
             continue
+
+        sold_by = "Non disponibile"
+        shipped_by = "Non disponibile"
+        merchant_info = product.select_one('.a-row.a-size-base.a-color-secondary')
+        if merchant_info:
+            merchant_text = merchant_info.get_text(strip=True)
+            if "Venduto da" in merchant_text:
+                sold_by_match = re.search(r"Venduto da ([^\.]+)", merchant_text)
+                if sold_by_match:
+                    sold_by = sold_by_match.group(1).strip()
+            if "Spedito da" in merchant_text:
+                shipped_by_match = re.search(r"Spedito da ([^\.]+)", merchant_text)
+                if shipped_by_match:
+                    shipped_by = shipped_by_match.group(1).strip()
+
+        link = f"https://www.amazon.it/dp/{asin}/?tag={AFFILIATE_TAG}&language=it_IT"
 
         found.append({
             "asin": asin,
             "title": title_tag.text.strip(),
             "price": price,
             "old_price": old_price,
-            "discount": f"-{sconto}%",
+            "discount": f"-{sconto}%" if sconto <= 60 else f"⚠️ Errore di prezzo: -{sconto}%",
             "image": image_tag["src"] if image_tag else "",
-            "link": f"https://www.amazon.it/dp/{asin}/?tag={AFFILIATE_TAG}",
-            "sold_by": "Non disponibile",
-            "shipped_by": "Non disponibile"
+            "link": link,
+            "sold_by": sold_by,
+            "shipped_by": shipped_by
         })
 
     print(f"📦 Trovati {len(found)} prodotti con sconto.")
