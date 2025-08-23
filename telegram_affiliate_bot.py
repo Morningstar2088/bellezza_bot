@@ -15,9 +15,10 @@ SCRAPER_API_KEY = os.getenv("SCRAPER_API_KEY")
 if not SCRAPER_API_KEY:
     raise ValueError("❌ Nessuna chiave SCRAPER_API_KEY trovata. Verifica su Railway o nel .env.")
 
-CATEGORY_URL = "https://www.amazon.it/s?i=beauty&rh=n%3A619872031"
+# URL offerte del giorno categoria bellezza
+CATEGORY_URL = "https://www.amazon.it/s?rh=n%3A6198082031%2Cp_n_deal_type%3A26901107031&dc"
 
-# Load già postati
+# Load prodotti già postati
 if os.path.exists("posted.json"):
     with open("posted.json", "r") as f:
         posted_links = set(json.load(f))
@@ -65,8 +66,8 @@ def extract_products(soup):
             if old_price_elem:
                 old_price = float(old_price_elem.text.replace("€", "").replace(".", "").replace(",", ".").strip())
 
-            venduto_da = item.select_one(".a-color-secondary .a-size-base")
-            venduto_text = venduto_da.text.strip() if venduto_da else "Venditore sconosciuto"
+            venduto_da = item.select_one(".a-row.a-size-base.a-color-secondary span")
+            venduto_text = venduto_da.text.strip() if venduto_da else "Venditore non specificato"
 
             prodotti.append({
                 "title": title,
@@ -100,7 +101,7 @@ def generate_message(product):
             ]
             discount = f"{phrases[hash(product['title']) % len(phrases)]} (-{discount_val}%)"
         else:
-            discount = f"💸 *Sconto*: -{discount_val}%"
+            discount = f"💸 *Sconto:* -{discount_val}%"
 
     msg = (
         f"💖 *{product['title']}*\n"
@@ -108,7 +109,7 @@ def generate_message(product):
         f"{discount}\n"
         f"{shipping_info}\n"
         f"👉 [Scopri l’offerta su Amazon]({product['url']})\n"
-        f"_Offerta segnalata da BeautyBot — la tua BFF delle occasioni 💅_"
+        f"_BeautyBot scova per te solo i migliori affari ✨_"
     )
     return msg
 
@@ -127,7 +128,7 @@ def post_product(product):
 # === MAIN LOOP ===
 if __name__ == "__main__":
     while True:
-        print(f"🔎 Scansione Categoria Bellezza su Amazon...")
+        print("🔍 Scansione Amazon — categoria Bellezza (Offerte del giorno)...")
         soup = get_soup(CATEGORY_URL)
         if not soup:
             print("❌ Nessun risultato")
