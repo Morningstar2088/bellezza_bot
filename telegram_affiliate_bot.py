@@ -41,6 +41,8 @@ async def send_to_telegram(bot, product):
     except Exception as e:
         print(f"❌ Errore invio prodotto {product['asin']}: {e}")
 
+# Estrae i dati dai prodotti nel codice HTML della pagina Amazon
+# e li converte in un dizionario strutturato per ogni prodotto
 def extract_products_from_html(html):
     soup = BeautifulSoup(html, 'html.parser')
     products = soup.select('div[data-asin]')
