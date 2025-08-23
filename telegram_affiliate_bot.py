@@ -84,7 +84,6 @@ def extract_products_from_html(html):
         price_tag = product.select_one('.a-price span.a-offscreen')
         old_price_tag = product.select_one('.a-price.a-text-price span.a-offscreen')
         image_tag = product.select_one('img')
-        link_tag = product.select_one('a.a-link-normal')
 
         if not title_tag or not price_tag or not old_price_tag:
             continue
@@ -122,7 +121,8 @@ def extract_products_from_html(html):
             "old_price": old_price,
             "discount": get_discount_badge(sconto),
             "image": image_tag["src"] if image_tag else "",
-            "link": f"https://www.amazon.it/dp/{asin}/?tag={AFFILIATE_TAG}",
+            # ✅ Forzatura lingua italiana su Amazon
+            "link": f"https://www.amazon.it/dp/{asin}/?tag={AFFILIATE_TAG}&language=it_IT",
             "sold_by": sold_by,
             "shipped_by": shipped_by
         })
@@ -132,10 +132,12 @@ def extract_products_from_html(html):
 
 async def main():
     print("🔁 Avvio scansione prodotti...\n")
-   # current_hour = datetime.now().hour
-   # if not (8 <= current_hour < 22):
-   #     print("⏸️ Fuori orario (08:00–22:00). Nessuna pubblicazione.\n")
-   #     return
+
+    # BLOCCHI ORARI: PUBBLICA SOLO TRA LE 08:00 e 22:00 (commentato temporaneamente)
+    # current_hour = datetime.now().hour
+    # if not (8 <= current_hour < 22):
+    #     print("⏸️ Fuori orario (08:00–22:00). Nessuna pubblicazione.\n")
+    #     return
 
     bot = Bot(token=TG_BOT_TOKEN)
 
