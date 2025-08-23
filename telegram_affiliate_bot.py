@@ -2,7 +2,8 @@ import os
 import time
 import requests
 from bs4 import BeautifulSoup
-from telegram import Bot, ParseMode
+from telegram import Bot
+from telegram.constants import ParseMode
 from urllib.parse import urljoin
 
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN")
