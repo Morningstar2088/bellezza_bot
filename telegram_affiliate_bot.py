@@ -132,10 +132,10 @@ def extract_products_from_html(html):
 
 async def main():
     print("🔁 Avvio scansione prodotti...\n")
-    current_hour = datetime.now().hour
-    if not (8 <= current_hour < 22):
-        print("⏸️ Fuori orario (08:00–22:00). Nessuna pubblicazione.\n")
-        return
+   # current_hour = datetime.now().hour
+   # if not (8 <= current_hour < 22):
+   #     print("⏸️ Fuori orario (08:00–22:00). Nessuna pubblicazione.\n")
+   #     return
 
     bot = Bot(token=TG_BOT_TOKEN)
 
