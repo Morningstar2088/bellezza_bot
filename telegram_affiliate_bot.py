@@ -1,149 +1,89 @@
 import os
 import time
-import json
 import requests
 from bs4 import BeautifulSoup
 from telegram import Bot
-from telegram.constants import ParseMode
-from dotenv import load_dotenv
-
-load_dotenv()
+from datetime import datetime
 
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN")
 TG_CHANNEL_ID = os.getenv("TG_CHANNEL_ID")
 SCRAPER_API_KEY = os.getenv("SCRAPER_API_KEY")
-if not SCRAPER_API_KEY:
-    raise ValueError("❌ Nessuna chiave SCRAPER_API_KEY trovata. Verifica su Railway o nel .env.")
+AFFILIATE_TAG = os.getenv("AFFILIATE_TAG")
 
-# URL offerte del giorno categoria bellezza
-CATEGORY_URL = "https://www.amazon.it/s?rh=n%3A6198082031%2Cp_n_deal_type%3A26901107031&dc"
-
-# Load prodotti già postati
-if os.path.exists("posted.json"):
-    with open("posted.json", "r") as f:
-        posted_links = set(json.load(f))
-else:
-    posted_links = set()
-
-def save_posted_links():
-    with open("posted.json", "w") as f:
-        json.dump(list(posted_links), f)
+if not TG_BOT_TOKEN or not TG_CHANNEL_ID or not SCRAPER_API_KEY or not AFFILIATE_TAG:
+    raise ValueError("❌ Manca una o più variabili d'ambiente. Verifica su Railway.")
 
 bot = Bot(token=TG_BOT_TOKEN)
 
-def get_soup(url):
+AMAZON_URL = f"https://api.scraperapi.com/?api_key={SCRAPER_API_KEY}&url=https://www.amazon.it/s?rh=n%3A6198082031%2Cp_n_deal_type%3A26901107031&dc"
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+}
+
+def parse_discount(text):
     try:
-        response = requests.get(
-            "http://api.scraperapi.com/",
-            params={"api_key": SCRAPER_API_KEY, "url": url, "country_code": "it"},
-            timeout=20,
-        )
-        if response.status_code == 200:
-            return BeautifulSoup(response.content, "html.parser")
-    except Exception:
-        pass
-    return None
+        return int(text.replace('%', '').replace('-', '').strip())
+    except:
+        return 0
 
-def extract_products(soup):
-    prodotti = []
-    items = soup.select('[data-component-type="s-search-result"]')
-    for item in items:
-        try:
-            title_elem = item.h2.a
-            title = title_elem.text.strip()
-            url = "https://www.amazon.it" + title_elem["href"].split("?")[0]
-            image_elem = item.select_one("img")
-            image = image_elem["src"] if image_elem else None
+def find_amazon_deals():
+    print(f"🔎 Scansione Amazon – categoria Bellezza (Offerte del giorno)...")
 
-            price_whole = item.select_one(".a-price-whole")
-            price_frac = item.select_one(".a-price-fraction")
-            if not (price_whole and price_frac):
-                continue
-            current_price = float(price_whole.text.replace(".", "").replace(",", ".")) + float("0." + price_frac.text)
+    try:
+        response = requests.get(AMAZON_URL, headers=HEADERS, timeout=30)
+        soup = BeautifulSoup(response.content, "html.parser")
+        items = soup.select("div.s-result-item")
 
-            old_price_elem = item.select_one(".a-text-price .a-offscreen")
-            old_price = None
-            if old_price_elem:
-                old_price = float(old_price_elem.text.replace("€", "").replace(".", "").replace(",", ".").strip())
+        for item in items:
+            title = item.select_one("h2 span")
+            link_tag = item.select_one("a.a-link-normal")
+            price_whole = item.select_one("span.a-price-whole")
+            price_frac = item.select_one("span.a-price-fraction")
+            discount_tag = item.select_one("span.a-letter-space + span")
 
-            venduto_da = item.select_one(".a-row.a-size-base.a-color-secondary span")
-            venduto_text = venduto_da.text.strip() if venduto_da else "Venditore non specificato"
+            if title and price_whole and discount_tag:
+                title_text = title.get_text(strip=True)
+                product_url = "https://www.amazon.it" + link_tag["href"].split("?")[0]
+                price = price_whole.get_text(strip=True) + "," + (price_frac.get_text(strip=True) if price_frac else "00")
+                discount = parse_discount(discount_tag.get_text())
+                seller = "Venditore non specificato"
+                shipper = "Spedizione non specificata"
 
-            prodotti.append({
-                "title": title,
-                "url": url,
-                "image": image,
-                "current_price": current_price,
-                "old_price": old_price,
-                "venduto_da": venduto_text
-            })
-        except Exception:
-            continue
-    return prodotti
+                # Estrai da venduto e spedito
+                seller_info = item.select_one("div.a-row.a-size-base.a-color-secondary")
+                if seller_info:
+                    parts = seller_info.get_text(separator="|").split("|")
+                    if len(parts) >= 1:
+                        seller = parts[0].strip()
+                    if len(parts) >= 2:
+                        shipper = parts[1].strip()
 
-def generate_message(product):
-    price = f"{product['current_price']:.2f}€"
-    discount = ""
-    shipping_info = f"📦 *{product['venduto_da']}*"
+                # Filtro sullo sconto
+                if discount >= 25:
+                    if discount >= 60:
+                        price_tag = "🚨 *ERRORE DI PREZZO?*"
+                    else:
+                        price_tag = "💸 *Offerta interessante!*"
 
-    if product["old_price"]:
-        discount_val = int(100 - (product["current_price"] / product["old_price"] * 100))
-        if discount_val < 25:
-            return None
-        elif discount_val >= 60:
-            phrases = [
-                "🚨 *Errore di Prezzo?* Non ci credo 😱",
-                "🧨 *Prezzo Fuori di Testa!*",
-                "🎯 *Super sconto fuori norma!*",
-                "💣 *Occhio: prezzo sbagliato?*",
-                "🔥 *Imperdibile!*",
-                "😵 *Prezzo pazzo!*"
-            ]
-            discount = f"{phrases[hash(product['title']) % len(phrases)]} (-{discount_val}%)"
-        else:
-            discount = f"💸 *Sconto:* -{discount_val}%"
+                    message = (
+                        f"{price_tag}\n\n"
+                        f"*{title_text}*\n"
+                        f"💰 Prezzo: *{price} €*  \n"
+                        f"📉 Sconto: *-{discount}%*  \n"
+                        f"🏷️ Venduto da: _{seller}_\n"
+                        f"📦 Spedito da: _{shipper}_\n"
+                        f"🔗 [Vai all’offerta]({product_url}?tag={AFFILIATE_TAG})"
+                    )
 
-    msg = (
-        f"💖 *{product['title']}*\n"
-        f"💰 *Prezzo ora:* {price}\n"
-        f"{discount}\n"
-        f"{shipping_info}\n"
-        f"👉 [Scopri l’offerta su Amazon]({product['url']})\n"
-        f"_BeautyBot scova per te solo i migliori affari ✨_"
-    )
-    return msg
+                    bot.send_message(chat_id=TG_CHANNEL_ID, text=message, parse_mode="Markdown", disable_web_page_preview=False)
+                    print(f"[✓] Inviato: {title_text[:50]}...")
 
-def post_product(product):
-    link = product["url"].split("?")[0]
-    if link in posted_links:
-        return
-    msg = generate_message(product)
-    if not msg:
-        return
-    bot.send_message(chat_id=TG_CHANNEL_ID, text=msg, parse_mode=ParseMode.MARKDOWN)
-    posted_links.add(link)
-    save_posted_links()
-    print(f"✅ Postato: {product['title']}")
+        print("⏱️ Attesa 60 minuti per nuova scansione...")
+    except Exception as e:
+        print(f"❌ Errore durante la scansione: {e}")
 
-# === MAIN LOOP ===
-if __name__ == "__main__":
-    while True:
-        print("🔍 Scansione Amazon — categoria Bellezza (Offerte del giorno)...")
-        soup = get_soup(CATEGORY_URL)
-        if not soup:
-            print("❌ Nessun risultato")
-            time.sleep(60 * 5)
-            continue
-
-        prodotti = extract_products(soup)
-        count = 0
-        for p in prodotti:
-            if p["old_price"] and p["old_price"] > p["current_price"]:
-                post_product(p)
-                count += 1
-                if count >= 10:
-                    break
-            time.sleep(1)
-
-        print("🕒 Attesa 60 minuti per nuova scansione...\n")
-        time.sleep(60 * 60)
+# Loop infinito
+while True:
+    find_amazon_deals()
+    time.sleep(3600)
