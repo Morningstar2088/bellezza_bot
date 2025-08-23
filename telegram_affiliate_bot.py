@@ -15,20 +15,9 @@ SCRAPER_API_KEY = os.getenv("SCRAPER_API_KEY")
 if not SCRAPER_API_KEY:
     raise ValueError("❌ Nessuna chiave SCRAPER_API_KEY trovata. Verifica su Railway o nel .env.")
 
-KEYWORDS = [
-    "crema viso", "siero viso", "contorno occhi", "maschera viso", "crema antirughe",
-    "detergente viso", "tonico viso", "crema corpo", "olio viso", "fondotinta",
-    "correttore", "cipria", "rossetto", "mascara", "matita occhi", "ombretto",
-    "eyeliner", "trucco viso", "spazzolino elettrico", "epilatore", "rasoio donna",
-    "schiuma da barba", "ceretta", "olio essenziale", "crema mani", "balsamo labbra",
-    "burrocacao", "crema solare", "integratori pelle", "magnesio", "acido ialuronico",
-    "scrub viso", "kit skincare", "tonico illuminante", "patch occhi", "primer viso",
-    "lucidalabbra", "pennelli trucco", "beauty blender", "rullo giada", "face roller",
-    "vitamina c viso", "detergente schiumogeno", "cura della pelle", "cura capelli",
-    "cosmetici naturali", "make up kit", "skincare coreana", "pelle sensibile"
-]
+CATEGORY_URL = "https://www.amazon.it/s?i=beauty&rh=n%3A619872031"
 
-# Load already posted links
+# Load già postati
 if os.path.exists("posted.json"):
     with open("posted.json", "r") as f:
         posted_links = set(json.load(f))
@@ -46,7 +35,7 @@ def get_soup(url):
         response = requests.get(
             "http://api.scraperapi.com/",
             params={"api_key": SCRAPER_API_KEY, "url": url, "country_code": "it"},
-            timeout=15,
+            timeout=20,
         )
         if response.status_code == 200:
             return BeautifulSoup(response.content, "html.parser")
@@ -76,8 +65,8 @@ def extract_products(soup):
             if old_price_elem:
                 old_price = float(old_price_elem.text.replace("€", "").replace(".", "").replace(",", ".").strip())
 
-            venduto_da = item.select_one(".a-row.a-size-base.a-color-secondary")
-            venduto_testo = venduto_da.text.strip() if venduto_da else "Venditore non specificato"
+            venduto_da = item.select_one(".a-color-secondary .a-size-base")
+            venduto_text = venduto_da.text.strip() if venduto_da else "Venditore sconosciuto"
 
             prodotti.append({
                 "title": title,
@@ -85,7 +74,7 @@ def extract_products(soup):
                 "image": image,
                 "current_price": current_price,
                 "old_price": old_price,
-                "venduto_da": venduto_testo
+                "venduto_da": venduto_text
             })
         except Exception:
             continue
@@ -105,7 +94,9 @@ def generate_message(product):
                 "🚨 *Errore di Prezzo?* Non ci credo 😱",
                 "🧨 *Prezzo Fuori di Testa!*",
                 "🎯 *Super sconto fuori norma!*",
-                "💣 *Occhio: prezzo sbagliato?*"
+                "💣 *Occhio: prezzo sbagliato?*",
+                "🔥 *Imperdibile!*",
+                "😵 *Prezzo pazzo!*"
             ]
             discount = f"{phrases[hash(product['title']) % len(phrases)]} (-{discount_val}%)"
         else:
@@ -136,18 +127,22 @@ def post_product(product):
 # === MAIN LOOP ===
 if __name__ == "__main__":
     while True:
-        for kw in KEYWORDS:
-            print(f"🔎 Cerco: {kw}")
-            url = f"https://www.amazon.it/s?k={kw.replace(' ', '+')}"
-            soup = get_soup(url)
-            if not soup:
-                continue
-            prodotti = extract_products(soup)
-            for p in prodotti[:8]:  # Max 8 prodotti per keyword
-                if p["old_price"] and p["old_price"] > p["current_price"]:
-                    post_product(p)
-                time.sleep(1)
-            time.sleep(2)
+        print(f"🔎 Scansione Categoria Bellezza su Amazon...")
+        soup = get_soup(CATEGORY_URL)
+        if not soup:
+            print("❌ Nessun risultato")
+            time.sleep(60 * 5)
+            continue
+
+        prodotti = extract_products(soup)
+        count = 0
+        for p in prodotti:
+            if p["old_price"] and p["old_price"] > p["current_price"]:
+                post_product(p)
+                count += 1
+                if count >= 10:
+                    break
+            time.sleep(1)
 
         print("🕒 Attesa 60 minuti per nuova scansione...\n")
         time.sleep(60 * 60)
