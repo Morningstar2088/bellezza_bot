@@ -19,7 +19,7 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Accept-Language": "it-IT,it;q=0.9"
 }
-URL = f"https://api.scraperapi.com/?api_key={SCRAPER_API_KEY}&url=https://www.amazon.it/s?rh=n%3A6198082031%2Cp_n_deal_type%3A26901107031"
+URL = f"https://api.scraperapi.com/?api_key={SCRAPER_API_KEY}&url=https://www.amazon.it/s?rh=n%3A6198082031%2Cp_n_deal_type%3A26901107031&language=it_IT&marketplace=amazon.it"
 
 sent_products = set()
 SENT_FILE = "sent_products.txt"
