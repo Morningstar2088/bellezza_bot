@@ -15,28 +15,22 @@ AFFILIATE_TAG = os.getenv("AFFILIATE_TAG")
 
 # Costanti
 HEADERS = {"User-Agent": "Mozilla/5.0"}
-URL = f"https://api.scraperapi.com/?api_key={SCRAPER_API_KEY}&url=https://www.amazon.it/s?rh=n%3A6198082031%2Cp_n_deal_type%3A26901107031&language=it_IT"
+URL = f"https://api.scraperapi.com/?api_key={SCRAPER_API_KEY}&url=https://www.amazon.it/s?rh=n%3A6198082031%2Cp_n_deal_type%3A26901107031"
 
 sent_products = set()
 
 async def send_to_telegram(bot, product):
     try:
-        # Componi messaggio in stile influencer con ironia
-        message = f"🛒 <b>{product['title']}</b>\n\n"
+        message = f"🛍️ <b>{product['title']}</b>\n\n"
+        message += f"💸 <b>Prezzo:</b> <s>{product['old_price']}</s> → <b>{product['price']}</b>\n"
+        message += f"🔥 <b>Sconto:</b> {product['discount']}\n"
         if product['coupon']:
-            message += f"🎟️ <b>Coupon disponibile!</b>\n"
-        message += f"💰 <b>Ora a:</b> <b>{product['price']}</b>\n"
-        if product['old_price']:
-            message += f"💸 <b>Prezzo Consigliato:</b> <s>{product['old_price']}</s>\n"
-        if product['lowest_30d']:
-            message += f"📉 <b>Più basso ultimi 30 giorni:</b> {product['lowest_30d']}\n"
-        if product['discount']:
-            message += f"🔥 <b>Sconto:</b> {product['discount']}\n"
+            message += f"🎟️ <b>Coupon:</b> {product['coupon']}\n"
         if product['sold_by'] != "Non disponibile":
             message += f"🏪 <b>Venduto da:</b> {product['sold_by']}\n"
         if product['shipped_by'] != "Non disponibile":
             message += f"🚚 <b>Spedito da:</b> {product['shipped_by']}\n"
-        message += f"\n👉 <a href='{product['link']}'>Scopri l’offerta su Amazon!</a>\n\n"
+        message += f"🔗 <a href='{product['link']}'>Acquista ora su Amazon</a>\n\n"
         message += "#bellezza #offerte #amazon"
 
         await bot.send_photo(
@@ -63,32 +57,24 @@ def extract_products_from_html(html):
         title_tag = product.select_one('h2 span')
         price_tag = product.select_one('.a-price span.a-offscreen')
         old_price_tag = product.select_one('.a-price.a-text-price span.a-offscreen')
-        lowest_30d_tag = product.find('span', string=re.compile(r"Prezzo più basso"))
-        coupon_tag = product.find('span', string=re.compile(r"Coupon"))
-
         image_tag = product.select_one('img')
         link_tag = product.select_one('a.a-link-normal')
 
-        if not title_tag or not price_tag:
+        if not title_tag or not price_tag or not old_price_tag:
             continue
 
         price = price_tag.text.strip()
-        old_price = old_price_tag.text.strip() if old_price_tag else ""
-        lowest_30d = lowest_30d_tag.find_next('span').text.strip() if lowest_30d_tag else ""
-        has_coupon = True if coupon_tag else False
+        old_price = old_price_tag.text.strip()
 
-        discount = ""
+        # Calcolo sconto
         try:
-            if old_price:
-                p1 = float(re.sub(r"[^\d,]", "", old_price).replace(",", "."))
-                p2 = float(re.sub(r"[^\d,]", "", price).replace(",", "."))
-                sconto = round(100 - (p2 / p1 * 100))
-                if sconto < 30:
-                    continue
-                discount = f"-{sconto}%" if sconto <= 70 else f"⚠️ Sconto anomalo: -{sconto}%"
+            p1 = float(re.sub(r"[^\d,]", "", old_price).replace(",", "."))
+            p2 = float(re.sub(r"[^\d,]", "", price).replace(",", "."))
+            base_discount = round(100 - (p2 / p1 * 100))
         except:
             continue
 
+        # Estrai "venduto da" e "spedito da"
         sold_by = "Non disponibile"
         shipped_by = "Non disponibile"
         merchant_info = product.select_one('.a-row.a-size-base.a-color-secondary')
@@ -103,16 +89,32 @@ def extract_products_from_html(html):
                 if shipped_by_match:
                     shipped_by = shipped_by_match.group(1).strip()
 
+        # Estrai eventuale coupon
+        coupon_text = ""
+        coupon_tag = product.find(string=re.compile("coupon", re.I))
+        coupon_discount = 0
+        if coupon_tag:
+            match = re.search(r"(\d+)%", coupon_tag)
+            if match:
+                coupon_discount = int(match.group(1))
+                coupon_text = f"{coupon_discount}% extra"
+            else:
+                coupon_text = "Disponibile"
+
+        total_discount = base_discount + coupon_discount
+
+        if total_discount < 25:
+            continue
+
         found.append({
             "asin": asin,
             "title": title_tag.text.strip(),
             "price": price,
             "old_price": old_price,
-            "lowest_30d": lowest_30d,
-            "discount": discount,
-            "coupon": has_coupon,
+            "discount": f"-{total_discount}%" if total_discount <= 70 else f"⚠️ Errore di prezzo: -{total_discount}%",
+            "coupon": coupon_text,
             "image": image_tag["src"] if image_tag else "",
-            "link": f"https://www.amazon.it/dp/{asin}/?tag={AFFILIATE_TAG}&language=it_IT",
+            "link": f"https://www.amazon.it/dp/{asin}/?tag={AFFILIATE_TAG}",
             "sold_by": sold_by,
             "shipped_by": shipped_by
         })
