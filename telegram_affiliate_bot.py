@@ -30,11 +30,11 @@ if os.path.exists(SENT_FILE):
 
 async def send_to_telegram(bot, product):
     try:
-        message = f"🛍️ <b>{product['title']}</b>\n\n"
+        message = f"💖 <b>{product['title']}</b>\n\n"
         message += f"💸 <b>Prezzo:</b> <s>{product['old_price']}</s> → <b>{product['price']}</b>\n"
-        message += f"🔥 <b>Sconto:</b> {product['discount']}\n"
+        message += f"✨ <b>Sconto:</b> {product['discount']}\n"
         if product['coupon']:
-            message += f"🏷️ <b>Coupon disponibile!</b>\n"
+            message += f"🎁 <b>Coupon disponibile!</b>\n"
         if product['sold_by'] != "Non disponibile":
             message += f"🏪 <b>Venduto da:</b> {product['sold_by']}\n"
         if product['shipped_by'] != "Non disponibile":
@@ -78,8 +78,9 @@ def extract_products_from_html(html):
         price = price_tag.text.strip()
         old_price = old_price_tag.text.strip()
 
-        # 🔒 Anti €/ml, €/kg, €/l
-        if any(unit in old_price.lower() for unit in ["/ml", "/kg", "/l", "€/ml", "€/kg", "€/l"]):
+        # 🔒 Anti €/ml, €/kg, €/l (in qualsiasi tag, compresi data-* o aria-label)
+        full_text = product.get_text(separator=" ").lower()
+        if any(unit in full_text for unit in ["/ml", "/kg", "/l", "€/ml", "€/kg", "€/l"]):
             continue
 
         try:
@@ -106,10 +107,8 @@ def extract_products_from_html(html):
                 if shipped_by_match:
                     shipped_by = shipped_by_match.group(1).strip()
 
-        # Coupon (solo se visibile nel box)
-        coupon = False
-        if product.select_one('span.a-color-base span.s-coupon-unclipped'):
-            coupon = True
+        # Coupon
+        coupon = bool(product.select_one('span.a-color-base span.s-coupon-unclipped'))
 
         found.append({
             "asin": asin,
