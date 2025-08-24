@@ -6,7 +6,6 @@ from telegram.constants import ParseMode
 import asyncio
 import re
 import time
-from datetime import datetime
 
 # Env
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN")
@@ -21,20 +20,28 @@ HEADERS = {
 }
 URL = f"https://api.scraperapi.com/?api_key={SCRAPER_API_KEY}&url=https://www.amazon.it/s?rh=n%3A6198082031%2Cp_n_deal_type%3A26901107031&language=it_IT&marketplace=amazon.it"
 
-sent_products = set()
 SENT_FILE = "sent_products.txt"
 
-if os.path.exists(SENT_FILE):
-    with open(SENT_FILE, "r") as f:
-        sent_products = set(f.read().splitlines())
+# Carica prodotti già inviati da file
+def load_sent_products():
+    if not os.path.exists(SENT_FILE):
+        return set()
+    with open(SENT_FILE, "r", encoding="utf-8") as f:
+        return set(line.strip() for line in f.readlines())
+
+# Salva nuovo ASIN dopo invio
+def save_sent_product(asin):
+    with open(SENT_FILE, "a", encoding="utf-8") as f:
+        f.write(asin + "\n")
+
+sent_products = load_sent_products()
 
 async def send_to_telegram(bot, product):
     try:
-        message = f"💖 <b>{product['title']}</b>\n\n"
+        # Componi messaggio
+        message = f"🛍️ <b>{product['title']}</b>\n\n"
         message += f"💸 <b>Prezzo:</b> <s>{product['old_price']}</s> → <b>{product['price']}</b>\n"
-        message += f"✨ <b>Sconto:</b> {product['discount']}\n"
-        if product['coupon']:
-            message += f"🎁 <b>Coupon disponibile!</b>\n"
+        message += f"🔥 <b>Sconto:</b> {product['discount']}\n"
         if product['sold_by'] != "Non disponibile":
             message += f"🏪 <b>Venduto da:</b> {product['sold_by']}\n"
         if product['shipped_by'] != "Non disponibile":
@@ -42,15 +49,18 @@ async def send_to_telegram(bot, product):
         message += f"🔗 <a href='{product['link']}'>Acquista ora su Amazon</a>\n\n"
         message += "#bellezza #offerte #amazon"
 
+        # Invia foto con caption
         await bot.send_photo(
             chat_id=TG_CHANNEL_ID,
             photo=product['image'],
             caption=message,
             parse_mode=ParseMode.HTML
         )
+
+        # Salva asin come già inviato
+        save_sent_product(product['asin'])
+
         print(f"✅ Inviato: {product['asin']}")
-        with open(SENT_FILE, "a") as f:
-            f.write(product['asin'] + "\n")
     except Exception as e:
         print(f"❌ Errore invio prodotto {product['asin']}: {e}")
 
@@ -74,15 +84,14 @@ def extract_products_from_html(html):
         if not title_tag or not price_tag or not old_price_tag:
             continue
 
-        title = title_tag.text.strip()
+        # Filtra i prezzi al litro/kg
+        if any(x in title_tag.text.lower() for x in ['ml', 'kg', 'grammi', 'gr']):
+            continue
+
         price = price_tag.text.strip()
         old_price = old_price_tag.text.strip()
 
-        # 🔒 Anti €/ml, €/kg, €/l (in qualsiasi tag, compresi data-* o aria-label)
-        full_text = product.get_text(separator=" ").lower()
-        if any(unit in full_text for unit in ["/ml", "/kg", "/l", "€/ml", "€/kg", "€/l"]):
-            continue
-
+        # Calcolo sconto
         try:
             p1 = float(re.sub(r"[^\d,]", "", old_price).replace(",", "."))
             p2 = float(re.sub(r"[^\d,]", "", price).replace(",", "."))
@@ -92,9 +101,9 @@ def extract_products_from_html(html):
         except:
             continue
 
-        # Venduto/Spedito da
         sold_by = "Non disponibile"
         shipped_by = "Non disponibile"
+
         merchant_info = product.select_one('.a-row.a-size-base.a-color-secondary')
         if merchant_info:
             merchant_text = merchant_info.get_text(strip=True)
@@ -107,34 +116,24 @@ def extract_products_from_html(html):
                 if shipped_by_match:
                     shipped_by = shipped_by_match.group(1).strip()
 
-        # Coupon
-        coupon = bool(product.select_one('span.a-color-base span.s-coupon-unclipped'))
-
         found.append({
             "asin": asin,
-            "title": title,
+            "title": title_tag.text.strip(),
             "price": price,
             "old_price": old_price,
-            "discount": f"-{sconto}%" if sconto <= 70 else f"⚠️ Prezzo anomalo: -{sconto}%",
+            "discount": f"-{sconto}%" if sconto <= 60 else f"⚠️ Errore di prezzo: -{sconto}%",
             "image": image_tag["src"] if image_tag else "",
             "link": f"https://www.amazon.it/dp/{asin}/?tag={AFFILIATE_TAG}",
             "sold_by": sold_by,
-            "shipped_by": shipped_by,
-            "coupon": coupon
+            "shipped_by": shipped_by
         })
 
-    print(f"📦 Trovati {len(found)} prodotti con sconto valido.")
+    print(f"📦 Trovati {len(found)} prodotti con sconto.")
     return found
 
 async def main():
     print("🔁 Avvio scansione prodotti...\n")
     bot = Bot(token=TG_BOT_TOKEN)
-
-    # 🔲 Finestra oraria (commentata di default)
-    # current_hour = datetime.now().hour
-    # if current_hour < 8 or current_hour >= 22:
-    #     print("⏰ Fuori orario di pubblicazione (8–22). Skipping.")
-    #     return
 
     try:
         response = requests.get(URL, headers=HEADERS)
@@ -144,6 +143,7 @@ async def main():
             for product in products:
                 if product['asin'] not in sent_products:
                     await send_to_telegram(bot, product)
+                    sent_products.add(product['asin'])
                     await asyncio.sleep(2)
         else:
             print(f"❌ Errore richiesta: {response.status_code}")
