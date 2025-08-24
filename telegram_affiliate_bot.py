@@ -6,6 +6,7 @@ from telegram.constants import ParseMode
 import asyncio
 import re
 import time
+from datetime import datetime
 
 # Env
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN")
@@ -21,17 +22,16 @@ sent_products = set()
 
 async def send_to_telegram(bot, product):
     try:
-        message = f"🛍️ <b>{product['title']}</b>\n\n"
+        # Componi messaggio
+        message = f"✨ <b>{product['title']}</b>\n\n"
         message += f"💸 <b>Prezzo:</b> <s>{product['old_price']}</s> → <b>{product['price']}</b>\n"
         message += f"🔥 <b>Sconto:</b> {product['discount']}\n"
-        if product['coupon']:
-            message += f"🎟️ <b>Coupon:</b> {product['coupon']}\n"
         if product['sold_by'] != "Non disponibile":
             message += f"🏪 <b>Venduto da:</b> {product['sold_by']}\n"
         if product['shipped_by'] != "Non disponibile":
             message += f"🚚 <b>Spedito da:</b> {product['shipped_by']}\n"
-        message += f"🔗 <a href='{product['link']}'>Acquista ora su Amazon</a>\n\n"
-        message += "#bellezza #offerte #amazon"
+        message += f"🔗 <a href='{product['link']}'>Scopri su Amazon</a>\n\n"
+        message += "#offerte #bellezza #risparmio"
 
         await bot.send_photo(
             chat_id=TG_CHANNEL_ID,
@@ -66,11 +66,17 @@ def extract_products_from_html(html):
         price = price_tag.text.strip()
         old_price = old_price_tag.text.strip()
 
+        # Filtro prezzi tipo €/kg o €/ml
+        if "€/" in old_price.lower() or "€/" in price.lower():
+            continue
+
         # Calcolo sconto
         try:
             p1 = float(re.sub(r"[^\d,]", "", old_price).replace(",", "."))
             p2 = float(re.sub(r"[^\d,]", "", price).replace(",", "."))
-            base_discount = round(100 - (p2 / p1 * 100))
+            sconto = round(100 - (p2 / p1 * 100))
+            if sconto < 25:
+                continue
         except:
             continue
 
@@ -89,32 +95,14 @@ def extract_products_from_html(html):
                 if shipped_by_match:
                     shipped_by = shipped_by_match.group(1).strip()
 
-        # Estrai eventuale coupon
-        coupon_text = ""
-        coupon_tag = product.find(string=re.compile("coupon", re.I))
-        coupon_discount = 0
-        if coupon_tag:
-            match = re.search(r"(\d+)%", coupon_tag)
-            if match:
-                coupon_discount = int(match.group(1))
-                coupon_text = f"{coupon_discount}% extra"
-            else:
-                coupon_text = "Disponibile"
-
-        total_discount = base_discount + coupon_discount
-
-        if total_discount < 25:
-            continue
-
         found.append({
             "asin": asin,
             "title": title_tag.text.strip(),
             "price": price,
             "old_price": old_price,
-            "discount": f"-{total_discount}%" if total_discount <= 70 else f"⚠️ Errore di prezzo: -{total_discount}%",
-            "coupon": coupon_text,
+            "discount": f"-{sconto}%" if sconto <= 70 else f"⚠️ Errore di prezzo: -{sconto}%",
             "image": image_tag["src"] if image_tag else "",
-            "link": f"https://www.amazon.it/dp/{asin}/?tag={AFFILIATE_TAG}",
+            "link": f"https://www.amazon.it/dp/{asin}/?tag={AFFILIATE_TAG}&language=it_IT",
             "sold_by": sold_by,
             "shipped_by": shipped_by
         })
@@ -124,8 +112,14 @@ def extract_products_from_html(html):
 
 async def main():
     print("🔁 Avvio scansione prodotti...\n")
-    bot = Bot(token=TG_BOT_TOKEN)
 
+    # BLOCCO ORARIO — opzionale
+    # current_hour = datetime.now().hour
+    # if current_hour < 8 or current_hour >= 22:
+    #     print("⏰ Fuori dall'orario di pubblicazione (08:00–22:00).")
+    #     return
+
+    bot = Bot(token=TG_BOT_TOKEN)
     try:
         response = requests.get(URL, headers=HEADERS)
         if response.status_code == 200:
