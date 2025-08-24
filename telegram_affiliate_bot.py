@@ -83,7 +83,7 @@ def extract_products_from_html(html):
                 p1 = float(re.sub(r"[^\d,]", "", old_price).replace(",", "."))
                 p2 = float(re.sub(r"[^\d,]", "", price).replace(",", "."))
                 sconto = round(100 - (p2 / p1 * 100))
-                if sconto < 25:
+                if sconto < 30:
                     continue
                 discount = f"-{sconto}%" if sconto <= 70 else f"⚠️ Sconto anomalo: -{sconto}%"
         except:
